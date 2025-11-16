@@ -25,22 +25,30 @@ if not API_KEY:
 BASE_URL = "https://api.massive.com"
 RISK_FREE_RATE = 0.04  # 4% annual risk-free rate (rough approximation)
 
+# >>> Create the FastAPI app first <<<
 app = FastAPI(
     title="Polygon / Massive backend",
     description="Backend for rolling short PUT strategy helper.",
     version="1.0.0",
 )
 
-# Allow all frontends (local + Netlify + future)
+# >>> Then configure CORS on that app <<<
+# Allow local dev frontends + Netlify frontend
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://loquacious-malabi-a19565.netlify.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],       # allow any origin
-    allow_credentials=False,   # must be False when using "*"
+    allow_origins=origins,      # explicit list of allowed origins
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Factory defaults for rolling PUT strategy
+# (now the rest of your code, e.g. ROLLING_DEFAULTS, routes, etc.)
 ROLLING_DEFAULTS = {
     "delta_min": float(os.getenv("ROLLING_DELTA_MIN", "0.20")),
     "delta_max": float(os.getenv("ROLLING_DELTA_MAX", "0.25")),
@@ -48,17 +56,6 @@ ROLLING_DEFAULTS = {
     "credit_min_pct": float(os.getenv("ROLLING_CREDIT_MIN_PCT", "0.006")),
     "credit_max_pct": float(os.getenv("ROLLING_CREDIT_MAX_PCT", "0.008")),
 }
-
-
-BASE_URL = "https://api.massive.com"
-RISK_FREE_RATE = 0.04  # 4% annual risk-free rate (rough approximation)
-
-app = FastAPI(
-    title="Polygon / Massive backend",
-    description="Backend for rolling short PUT strategy helper.",
-    version="1.0.0",
-)
-
 
 # ---------------------------------------------------------------------------
 # Helpers
