@@ -31,19 +31,14 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Allow local dev frontends (Vite, etc.)
+# Allow all frontends (local + Netlify + future)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "https://loquacious-malabi-a19565.netlify.app",  # Netlify frontend
-    ],
+    allow_origin_regex=".*",   # allow any origin
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 # Factory defaults for rolling PUT strategy
 ROLLING_DEFAULTS = {
