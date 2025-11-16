@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import "./App.css";
 
 const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+  import.meta.env.VITE_API_BASE_URL ||
+  "https://put-oportunity-finder.onrender.com";
 
 const REFRESH_INTERVAL_MS = 10000; // 10 seconds
 
@@ -150,7 +151,7 @@ function App() {
   const [ticker, setTicker] = useState("AAPL");
   const [expiration, setExpiration] = useState("2025-11-28");
 
-  const [deltaMin, setDeltaMin] = useState(0.2);
+  const [deltaMin, setDeltaMin] = useState(0.20);
   const [deltaMax, setDeltaMax] = useState(0.25);
 
   const [creditMin, setCreditMin] = useState(0.006);
@@ -650,8 +651,7 @@ function App() {
           <h2>Opportunities</h2>
 
           <p className="hint">
-            Data source: Massive (options & greeks, snapshot/delayed). Backend
-            last fetch: <b>{formatTime(lastUpdated)}</b>.
+            Data source: Massive (options & greeks, snapshot/delayed).
           </p>
 
           {error && <div className="error-banner">Error: {error}</div>}
