@@ -79,6 +79,9 @@ app.add_middleware(
 # Helpers
 # ---------------------------------------------------------------------------
 
+@app.get("/")
+def read_root():
+    return {"status": "ok", "message": "Put Opportunity Finder backend is running"}
 
 def _massive_get(path: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """
