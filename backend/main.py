@@ -37,11 +37,13 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://loquacious-malabi-a19565.netlify.app",  # Netlify frontend
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Factory defaults for rolling PUT strategy
 ROLLING_DEFAULTS = {
