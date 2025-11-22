@@ -231,7 +231,7 @@ function App() {
   const [creditMin, setCreditMin] = useState(0.006);
   const [creditMax, setCreditMax] = useState(0.008);
 
-  const [bandWindow, setBandWindow] = useState(0);
+  const [bandWindow, setBandWindow] = useState(1);
 
   const [numExpirations, setNumExpirations] = useState(1); // 1 = only base
 
@@ -383,7 +383,7 @@ function App() {
       setDeltaMax(0.23);
       setCreditMin(0.005);
       setCreditMax(0.007);
-      setBandWindow(0);
+      setBandWindow(1);
     } else if (p === "Aggressive") {
       setDeltaMin(0.22);
       setDeltaMax(0.3);
@@ -396,7 +396,7 @@ function App() {
       setDeltaMax(0.25);
       setCreditMin(0.006);
       setCreditMax(0.008);
-      setBandWindow(0);
+      setBandWindow(1);
     }
   }
 
