@@ -437,67 +437,90 @@ def rolling_put_candidates(
                 "credit_pct": credit_pct,
             }
         )
-    # 6.4 Filter enriched puts by band window, delta, and credit
-    filtered: List[Dict[str, Any]] = []
+
+    # --- 7) Select band, mark filters, and build opportunities + neighbors ---
+
+    # 7.1 Compute meets_* flags for every row and identify in-band rows
+    in_band_rows: List[Dict[str, Any]] = []
+
+    # Sorted list of all available strikes (for neighbor detection)
+    all_strikes = sorted({row["strike_price"] for row in enriched_puts})
+
     for row in enriched_puts:
         s = row["strike_price"]
-        d = abs(row["delta"])
-        cp = row["credit_pct"]
+        d = row.get("delta")
+        cp = row.get("credit_pct")
 
         in_band = (s >= (lower_band - band_window)) and (s <= (lower_band + band_window))
-        in_delta = (d >= delta_min) and (d <= delta_max)
-        in_credit = (
-            cp is not None
-            and cp >= credit_min_pct
-            and cp <= credit_max_pct
-        )
+
+        # Flags
+        meets_delta = False
+        if d is not None:
+            dd = abs(d)
+            meets_delta = (dd >= delta_min) and (dd <= delta_max)
+
+        meets_credit = False
+        if cp is not None:
+            meets_credit = (cp >= credit_min_pct) and (cp <= credit_max_pct)
 
         row["meets_band"] = in_band
-        row["meets_delta"] = in_delta
-        row["meets_credit"] = in_credit
+        row["meets_delta"] = meets_delta
+        row["meets_credit"] = meets_credit
 
-        if in_band and in_delta and in_credit:
-            filtered.append(row)
+        if in_band:
+            in_band_rows.append(row)
 
-    # 6.5 (removed) – no fallback; if `filtered` is empty we just won't have opportunities
+    # 7.2 Determine neighbor strikes (just outside the in-band range)
+    neighbor_strikes: set[float] = set()
 
-    # 6.6 Mark opportunities and neighbors
+    if in_band_rows:
+        in_band_strikes = sorted({row["strike_price"] for row in in_band_rows})
+        min_in = in_band_strikes[0]
+        max_in = in_band_strikes[-1]
+
+        try:
+            idx_min = all_strikes.index(min_in)
+            idx_max = all_strikes.index(max_in)
+        except ValueError:
+            idx_min = idx_max = -1
+
+        # Strike immediately below the lowest in-band strike
+        if idx_min > 0:
+            neighbor_strikes.add(all_strikes[idx_min - 1])
+
+        # Strike immediately above the highest in-band strike
+        if idx_max != -1 and idx_max < len(all_strikes) - 1:
+            neighbor_strikes.add(all_strikes[idx_max + 1])
+
+    # 7.3 Build opportunities (all in-band rows) and neighbors
     opportunities: List[Dict[str, Any]] = []
     neighbors: List[Dict[str, Any]] = []
 
-    if filtered:
-        strikes = [r["strike_price"] for r in enriched_puts]
-        strikes_sorted = sorted(set(strikes))
+    # All in-band rows are sent as type="opportunity".
+    # Frontend will use meets_* to classify as Candidate / Opportunity / Best.
+    for row in in_band_rows:
+        r = dict(row)
+        r["type"] = "opportunity"
+        opportunities.append(r)
 
-        opp_strikes = [r["strike_price"] for r in filtered]
+    # Neighbor rows: those just outside the band window
+    for row in enriched_puts:
+        s = row["strike_price"]
+        if s in neighbor_strikes and not row.get("meets_band", False):
+            r = dict(row)
+            r["type"] = "neighbor"
+            # Ensure flags exist
+            r.setdefault("meets_band", False)
+            r.setdefault("meets_delta", False)
+            r.setdefault("meets_credit", False)
+            neighbors.append(r)
 
-        def idx_of(strike: float) -> int:
-            return strikes_sorted.index(strike)
+    # Sort for consistency
+    opportunities.sort(key=lambda r: r["strike_price"])
+    neighbors.sort(key=lambda r: r["strike_price"])
 
-        neighbor_indices = set()
-        for s in opp_strikes:
-            i = idx_of(s)
-            if i - 1 >= 0:
-                neighbor_indices.add(strikes_sorted[i - 1])
-            if i + 1 < len(strikes_sorted):
-                neighbor_indices.add(strikes_sorted[i + 1])
-
-        for row in filtered:
-            row["type"] = "opportunity"
-            opportunities.append(row)
-
-        opp_strike_set = set(opp_strikes)
-        for row in enriched_puts:
-            s = row["strike_price"]
-            if s in neighbor_indices and s not in opp_strike_set:
-                r = dict(row)
-                r["type"] = "neighbor"
-                r.setdefault("meets_band", False)
-                r.setdefault("meets_delta", False)
-                r.setdefault("meets_credit", False)
-                neighbors.append(r)
-
-        neighbors.sort(key=lambda r: r["strike_price"])
+    # The count we report is the number of in-band rows
+    count = len(opportunities)
 
     # Final response
     return {
