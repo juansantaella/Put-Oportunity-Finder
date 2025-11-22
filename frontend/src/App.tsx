@@ -54,7 +54,7 @@ interface RollingResponse {
 
 type Profile = "Conservative" | "Normal" | "Aggressive" | "Custom";
 
-type Classification = "best" | "strong" | "weak" | "neighbor";
+type Classification = "best" | "opportunity" | "candidate" | "neighbor";
 
 interface ClassifiedRow extends OpportunityRow {
   classification: Classification;
@@ -79,9 +79,13 @@ interface QueryParams {
 function classifyRow(row: OpportunityRow): Classification {
   const { meets_band, meets_delta, meets_credit } = row;
 
-  if (meets_band && meets_delta && meets_credit) return "best";
-  if (meets_band && meets_delta) return "strong";
-  if (meets_band) return "weak";
+  const isFullMatch = meets_band && meets_delta && meets_credit;
+  if (isFullMatch) return "opportunity";
+
+  // Inside band but failing delta or credit → candidate
+  if (meets_band) return "candidate";
+
+  // Everything else is a neighbor (context only)
   return "neighbor";
 }
 
@@ -98,19 +102,31 @@ function formatProviderLabel(p: string | null): string {
 }
 
 function scoreForClassification(c: Classification): string {
-  if (c === "best") return "★";
-  if (c === "strong") return "✓";
-  return "-";
+  // Badge in the "Score" column:
+  // ★ → best full-match in that expiration
+  // ✓ → other full-matches
+  // ○ → candidates (partial matches inside band)
+  // - → neighbors
+  switch (c) {
+    case "best":
+      return "★";
+    case "opportunity":
+      return "✓";
+    case "candidate":
+      return "○";
+    default:
+      return "-";
+  }
 }
 
 function rowClassForClassification(c: Classification): string {
   switch (c) {
     case "best":
       return "row-best";
-    case "strong":
-      return "row-strong";
-    case "weak":
-      return "row-weak";
+    case "opportunity":
+      return "row-opportunity";
+    case "candidate":
+      return "row-candidate";
     default:
       return "row-neighbor";
   }
@@ -710,29 +726,66 @@ function App() {
 
           {!error && records.length > 0 && (
             <>
-              {records.map((data) => {
-                const baseRows: OpportunityRow[] = [
-                  ...data.opportunities,
-                  ...(showNeighbors ? data.neighbors : []),
-                ];
+{records.map((data) => {
+  const baseRows: OpportunityRow[] = [
+    ...data.opportunities,
+    ...(showNeighbors ? data.neighbors : []),
+  ];
 
-                const sorted = baseRows.sort(
-                  (a, b) => a.strike_price - b.strike_price
-                );
+  const sorted = baseRows.sort(
+    (a, b) => a.strike_price - b.strike_price
+  );
 
-                const tableRows: ClassifiedRow[] = sorted.map((row) => {
-                  const classification = classifyRow(row);
-                  return {
-                    ...row,
-                    classification,
-                    score: scoreForClassification(classification),
-                    rowClass: rowClassForClassification(classification),
-                  };
-                });
+  // 1) First pass: classify as opportunity / candidate / neighbor
+  const prelim: ClassifiedRow[] = sorted.map((row) => {
+    const classification = classifyRow(row);
+    return {
+      ...row,
+      classification,
+      score: "",  // placeholder, filled in after we decide 'best'
+      rowClass: "",
+    };
+  });
 
-                const incompleteCount = data.incomplete.length;
-                const isExpanded =
-                  expandedIncomplete === data.expiration_date;
+  // 2) Find the best full-match (highest credit_pct) for this expiration
+  const fullMatches = prelim.filter(
+    (r) =>
+      r.classification === "opportunity" &&
+      r.credit_pct != null
+  );
+
+  let bestTicker: string | null = null;
+  if (fullMatches.length > 0) {
+    const bestRow = fullMatches.reduce((best, r) =>
+      (r.credit_pct ?? 0) > (best.credit_pct ?? 0) ? r : best
+    );
+    bestTicker = bestRow.option_ticker;
+  }
+
+  // 3) Second pass: mark 'best' and compute score / rowClass
+  const tableRows: ClassifiedRow[] = prelim.map((row) => {
+    let finalClass: Classification = row.classification;
+
+    if (
+      bestTicker &&
+      row.classification === "opportunity" &&
+      row.option_ticker === bestTicker
+    ) {
+      finalClass = "best";
+    }
+
+    return {
+      ...row,
+      classification: finalClass,
+      score: scoreForClassification(finalClass),
+      rowClass: rowClassForClassification(finalClass),
+    };
+  });
+
+  const incompleteCount = data.incomplete.length;
+  const isExpanded =
+    expandedIncomplete === data.expiration_date;
+
 
                 return (
                   <div
