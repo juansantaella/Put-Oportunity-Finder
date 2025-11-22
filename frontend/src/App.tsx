@@ -77,15 +77,29 @@ interface QueryParams {
 // ---------- Helpers ----------
 
 function classifyRow(row: OpportunityRow): Classification {
-  const { meets_band, meets_delta, meets_credit } = row;
+  const { type, meets_band, meets_delta, meets_credit } = row;
 
+  // Neighbors are always neutral: show row for context, but no badge / highlight
+  if (type === "neighbor") {
+    return "neighbor";
+  }
+
+  // From here we know it's an opportunity row
   const isFullMatch = meets_band && meets_delta && meets_credit;
-  if (isFullMatch) return "opportunity";
+  if (isFullMatch) {
+    // Full-match (within band, credit, and delta)
+    return "opportunity";
+  }
 
-  // Inside band but failing delta or credit → candidate
-  if (meets_band) return "candidate";
+  // Candidate: in band and meeting exactly one of delta / credit (but not both)
+  const hasDelta = !!meets_delta;
+  const hasCredit = !!meets_credit;
+  if (meets_band && hasDelta !== hasCredit) {
+    // Within band, and meets either credit or delta, but not both
+    return "candidate";
+  }
 
-  // Everything else is a neighbor (context only)
+  // Any other edge-case opportunity → treat as neutral (no badge, no green)
   return "neighbor";
 }
 
@@ -106,7 +120,7 @@ function scoreForClassification(c: Classification): string {
   // ★ → best full-match in that expiration
   // ✓ → other full-matches
   // ○ → candidates (partial matches inside band)
-  // - → neighbors
+  // "" → neighbors / context rows (no badge)
   switch (c) {
     case "best":
       return "★";
@@ -115,7 +129,7 @@ function scoreForClassification(c: Classification): string {
     case "candidate":
       return "○";
     default:
-      return "-";
+      return "";
   }
 }
 
@@ -128,7 +142,8 @@ function rowClassForClassification(c: Classification): string {
     case "candidate":
       return "row-candidate";
     default:
-      return "row-neighbor";
+      // Neighbors / context rows: keep base table styling, no green highlight
+      return "";
   }
 }
 
@@ -548,7 +563,7 @@ function App() {
             </div>
 
             <div className="field">
-              <label>Band window (points around base strike)</label>
+              <label>Points above the Lower Band</label>
 
               <div className="slider-row">
                 <input
