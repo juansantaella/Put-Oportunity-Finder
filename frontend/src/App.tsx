@@ -221,19 +221,34 @@ function buildExpirationList(base: string, count: number): string[] {
 // ---------- Component ----------
 
 function App() {
+  // Slider / filter limits (front-end only)
+  const DELTA_MAX_MIN = 0.1;        // 0.10
+  const DELTA_MAX_MAX = 0.5;        // 0.50
+  const DELTA_MAX_STEP = 0.05;      // 0.05
+
+  const CREDIT_MIN_MIN = 0.003;     // 0.30 %
+  const CREDIT_MIN_MAX = 0.02;      // 2.00 %
+  const CREDIT_MIN_STEP = 0.0005;   // 0.05 %
+
+  const BAND_MIN = 1;
+  const BAND_MAX = 10;
+
   // Control panel state
   const [ticker, setTicker] = useState("AAPL");
   const [expiration, setExpiration] = useState("2025-11-28");
 
-  const [deltaMin, setDeltaMin] = useState(0.20);
-  const [deltaMax, setDeltaMax] = useState(0.25);
+  // We keep a fixed lower bound for |Δ| and only expose Max Δ to the user
+  const [deltaMin, setDeltaMin] = useState(DELTA_MAX_MIN);
+  const [deltaMax, setDeltaMax] = useState(0.3); // Normal (default) profile
 
-  const [creditMin, setCreditMin] = useState(0.006);
-  const [creditMax, setCreditMax] = useState(0.008);
+  // Stored as decimal (e.g. 0.007 = 0.70 %)
+  const [creditMin, setCreditMin] = useState(0.007);
+  const [creditMax, setCreditMax] = useState(CREDIT_MIN_MAX);
 
   const [bandWindow, setBandWindow] = useState(1);
 
-  const [numExpirations, setNumExpirations] = useState(1); // 1 = only base
+  // 1 = base only; we allow up to 3 weekly expirations in total
+  const [numExpirations, setNumExpirations] = useState(1);
 
   const [showNeighbors, setShowNeighbors] = useState(true);
   const [liveUpdate, setLiveUpdate] = useState(false);
@@ -261,6 +276,7 @@ function App() {
   const markCustom = () => {
     if (profile !== "Custom") setProfile("Custom");
   };
+
 
   // ---- Fetch all expirations ----
   async function fetchAll(params?: QueryParams) {
@@ -378,25 +394,25 @@ function App() {
   // Profile buttons
   function applyProfile(p: Exclude<Profile, "Custom">) {
     setProfile(p);
+
+    // All profiles share the same lower bound for |Δ| and the same max credit
+    setDeltaMin(DELTA_MAX_MIN);
+    setCreditMax(CREDIT_MIN_MAX);
+    setBandWindow(1);
+    setNumExpirations(1);
+
     if (p === "Conservative") {
-      setDeltaMin(0.18);
-      setDeltaMax(0.23);
-      setCreditMin(0.005);
-      setCreditMax(0.007);
-      setBandWindow(1);
-    } else if (p === "Aggressive") {
-      setDeltaMin(0.22);
-      setDeltaMax(0.3);
-      setCreditMin(0.006);
-      setCreditMax(0.01);
-      setBandWindow(2);
-    } else {
-      // Normal
-      setDeltaMin(0.2);
+      // Max Delta 0.25, Min Credit 0.60 %
       setDeltaMax(0.25);
       setCreditMin(0.006);
-      setCreditMax(0.008);
-      setBandWindow(1);
+    } else if (p === "Aggressive") {
+      // Max Delta 0.35, Min Credit 0.70 %
+      setDeltaMax(0.35);
+      setCreditMin(0.007);
+    } else {
+      // Normal (default): Max Delta 0.30, Min Credit 0.70 %
+      setDeltaMax(0.3);
+      setCreditMin(0.007);
     }
   }
 
@@ -405,33 +421,36 @@ function App() {
   }
 
   // Handlers for sliders / numeric inputs
-  const handleDeltaMinChange = (val: number) => {
-    if (Number.isNaN(val)) return;
-    setDeltaMin(val);
-    markCustom();
-  };
-
   const handleDeltaMaxChange = (val: number) => {
     if (Number.isNaN(val)) return;
-    setDeltaMax(val);
+
+    let clamped = Math.max(DELTA_MAX_MIN, Math.min(DELTA_MAX_MAX, val));
+
+    // Ensure max delta is never below the fixed lower bound
+    if (clamped < deltaMin) {
+      clamped = deltaMin;
+    }
+
+    setDeltaMax(clamped);
     markCustom();
   };
 
   const handleCreditMinChange = (val: number) => {
     if (Number.isNaN(val)) return;
-    setCreditMin(val);
-    markCustom();
-  };
 
-  const handleCreditMaxChange = (val: number) => {
-    if (Number.isNaN(val)) return;
-    setCreditMax(val);
+    const clamped = Math.max(CREDIT_MIN_MIN, Math.min(CREDIT_MIN_MAX, val));
+    setCreditMin(clamped);
     markCustom();
   };
 
   const handleBandWindowChange = (val: number) => {
     if (Number.isNaN(val)) return;
-    setBandWindow(val);
+
+    const clamped = Math.max(
+      BAND_MIN,
+      Math.min(BAND_MAX, Math.round(val))
+    );
+    setBandWindow(clamped);
     markCustom();
   };
 
@@ -440,6 +459,7 @@ function App() {
     const clamped = Math.min(3, Math.max(1, Math.round(val)));
     setNumExpirations(clamped);
   };
+
 
   // ---------- Render ----------
 
@@ -497,213 +517,170 @@ function App() {
 
       <main>
         <section className="card control-panel">
-          <h2>Control panel</h2>
+          <h2>Control Panel</h2>
 
+          {/* Ticker / base expiration */}
           <div className="grid-2">
             <div className="field">
               <label>Ticker</label>
               <input
-                list="ticker-list"
                 value={ticker}
-                onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                onChange={(e) =>
+                  setTicker(e.target.value.toUpperCase())
+                }
+                placeholder="AAPL"
               />
-              <datalist id="ticker-list">
-                {COMMON_TICKERS.map((t) => (
-                  <option key={t} value={t} />
-                ))}
-              </datalist>
             </div>
+
             <div className="field">
               <label>Base expiration (YYYY-MM-DD)</label>
               <input
                 value={expiration}
                 onChange={(e) => setExpiration(e.target.value)}
+                placeholder="2025-11-28"
               />
             </div>
           </div>
 
+          {/* Max Delta / Min Credit */}
           <div className="grid-2">
             <div className="field">
-              <label>
-                Delta range (abs) — from {deltaMin.toFixed(2)} to{" "}
-                {deltaMax.toFixed(2)}
-              </label>
-
+              <label>Max Delta (abs)</label>
               <div className="slider-row">
                 <input
                   type="range"
-                  min={0.05}
-                  max={0.5}
-                  step={0.01}
-                  value={deltaMin}
-                  onChange={(e) =>
-                    handleDeltaMinChange(parseFloat(e.target.value))
-                  }
-                />
-                <input
-                  type="range"
-                  min={0.05}
-                  max={0.5}
-                  step={0.01}
+                  min={DELTA_MAX_MIN}
+                  max={DELTA_MAX_MAX}
+                  step={DELTA_MAX_STEP}
                   value={deltaMax}
                   onChange={(e) =>
                     handleDeltaMaxChange(parseFloat(e.target.value))
                   }
                 />
               </div>
-
-              <div className="range-row">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={deltaMin}
-                  onChange={(e) =>
-                    handleDeltaMinChange(parseFloat(e.target.value))
-                  }
-                />
-                <span className="to-label">to</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={deltaMax}
-                  onChange={(e) =>
-                    handleDeltaMaxChange(parseFloat(e.target.value))
-                  }
-                />
-              </div>
+              <input
+                type="number"
+                min={DELTA_MAX_MIN}
+                max={DELTA_MAX_MAX}
+                step={DELTA_MAX_STEP}
+                value={deltaMax.toFixed(2)}
+                onChange={(e) =>
+                  handleDeltaMaxChange(parseFloat(e.target.value))
+                }
+              />
             </div>
 
             <div className="field">
-              <label>Distance from Lower Band (± points)</label>
-
+              <label>Min Credit (%)</label>
               <div className="slider-row">
                 <input
                   type="range"
-                  min={0}
-                  max={20}
-                  step={0.5}
+                  min={CREDIT_MIN_MIN}
+                  max={CREDIT_MIN_MAX}
+                  step={CREDIT_MIN_STEP}
+                  value={creditMin}
+                  onChange={(e) =>
+                    handleCreditMinChange(parseFloat(e.target.value))
+                  }
+                />
+              </div>
+              <input
+                type="number"
+                min={CREDIT_MIN_MIN * 100}
+                max={CREDIT_MIN_MAX * 100}
+                step={CREDIT_MIN_STEP * 100}
+                value={(creditMin * 100).toFixed(2)}
+                onChange={(e) => {
+                  const pct = parseFloat(e.target.value);
+                  if (!Number.isNaN(pct)) {
+                    handleCreditMinChange(pct / 100);
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Band distance / future expirations */}
+          <div className="grid-2">
+            <div className="field">
+              <label>Distance from lower band (+/- point)</label>
+              <div className="slider-row">
+                <input
+                  type="range"
+                  min={BAND_MIN}
+                  max={BAND_MAX}
+                  step={1}
                   value={bandWindow}
                   onChange={(e) =>
                     handleBandWindowChange(parseFloat(e.target.value))
                   }
                 />
               </div>
-
               <input
                 type="number"
-                step="0.5"
+                min={BAND_MIN}
+                max={BAND_MAX}
+                step={1}
                 value={bandWindow}
                 onChange={(e) =>
                   handleBandWindowChange(parseFloat(e.target.value))
                 }
               />
             </div>
-          </div>
 
-          <div className="grid-2">
             <div className="field">
               <label>
-                Credit % range — from {(creditMin * 100).toFixed(2)}% to{" "}
-                {(creditMax * 100).toFixed(2)}%
+                Number of future expirations (weekly steps) 1 = Base only,
+                up to 3 total
               </label>
-
               <div className="slider-row">
                 <input
                   type="range"
-                  min={0.002}
-                  max={0.02}
-                  step={0.001}
-                  value={creditMin}
+                  min={1}
+                  max={3}
+                  step={1}
+                  value={numExpirations}
                   onChange={(e) =>
-                    handleCreditMinChange(parseFloat(e.target.value))
-                  }
-                />
-                <input
-                  type="range"
-                  min={0.002}
-                  max={0.02}
-                  step={0.001}
-                  value={creditMax}
-                  onChange={(e) =>
-                    handleCreditMaxChange(parseFloat(e.target.value))
+                    handleNumExpChange(parseFloat(e.target.value))
                   }
                 />
               </div>
-
-              <div className="range-row">
-                <input
-                  type="number"
-                  step="0.001"
-                  value={creditMin}
-                  onChange={(e) =>
-                    handleCreditMinChange(parseFloat(e.target.value))
-                  }
-                />
-                <span className="to-label">to</span>
-                <input
-                  type="number"
-                  step="0.001"
-                  value={creditMax}
-                  onChange={(e) =>
-                    handleCreditMaxChange(parseFloat(e.target.value))
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="toggles">
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={showNeighbors}
-                  onChange={(e) => setShowNeighbors(e.target.checked)}
-                />
-                <span>Show neighbors</span>
-              </label>
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={liveUpdate}
-                  onChange={(e) => setLiveUpdate(e.target.checked)}
-                />
-                <span>Live update (auto-refresh)</span>
-              </label>
-            </div>
-          </div>
-
-          <div className="field exp-count-field">
-            <label>
-              Number of expirations (weekly steps)
-              <span className="mini-note">
-                &nbsp;1 = base only, up to 3 total.
-              </span>
-            </label>
-            <div className="slider-row">
-              <input
-                type="range"
-                min={1}
-                max={3}
-                step={1}
-                value={numExpirations}
-                onChange={(e) =>
-                  handleNumExpChange(parseInt(e.target.value, 10))
-                }
-              />
-            </div>
-            <div className="range-row">
               <input
                 type="number"
                 min={1}
                 max={3}
                 step={1}
+                className="exp-count-field"
                 value={numExpirations}
                 onChange={(e) =>
-                  handleNumExpChange(parseInt(e.target.value, 10))
+                  handleNumExpChange(parseFloat(e.target.value))
                 }
               />
             </div>
           </div>
 
+          {/* Toggles */}
+          <div className="toggles">
+            <div className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={showNeighbors}
+                onChange={(e) => setShowNeighbors(e.target.checked)}
+              />
+              <span>Show neighbors</span>
+            </div>
+
+            <div className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={liveUpdate}
+                onChange={(e) => setLiveUpdate(e.target.checked)}
+              />
+              <span>Live update (auto-refresh)</span>
+            </div>
+          </div>
+
+          {/* Actions + status */}
           <div className="actions-row">
             <button
               className="primary-btn"
@@ -752,72 +729,84 @@ function App() {
 
           {!error && records.length > 0 && (
             <>
-{records.map((data) => {
-  const baseRows: OpportunityRow[] = [
-    ...data.opportunities,
-    ...(showNeighbors ? data.neighbors : []),
-  ];
+              {records.map((data) => {
+                const baseRows: OpportunityRow[] = [
+                  ...data.opportunities,
+                  ...(showNeighbors ? data.neighbors : []),
+                ];
 
-  const sorted = baseRows.sort(
-    (a, b) => a.strike_price - b.strike_price
-  );
+                const sorted = baseRows.sort(
+                  (a, b) => a.strike_price - b.strike_price
+                );
 
-  // 1) First pass: classify as opportunity / candidate / neighbor
-  const prelim: ClassifiedRow[] = sorted.map((row) => {
-    const classification = classifyRow(row);
-    return {
-      ...row,
-      classification,
-      score: "",  // placeholder, filled in after we decide 'best'
-      rowClass: "",
-    };
-  });
+                // 1) Clasificación inicial
+                const prelim: ClassifiedRow[] = sorted.map((row) => {
+                  const classification = classifyRow(row);
+                  return {
+                    ...row,
+                    classification,
+                    score: "",
+                    rowClass: "",
+                  };
+                });
 
-  // 2) Find the best full-match (highest credit_pct) for this expiration
-  const fullMatches = prelim.filter(
-    (r) =>
-      r.classification === "opportunity" &&
-      r.credit_pct != null
-  );
+                // 2) Identificar BEST (★): full match con mejor crédito
+                const fullMatches = prelim.filter(
+                  (r) => r.classification === "opportunity" && r.credit_pct != null
+                );
+                const maxCredit =
+                  fullMatches.length > 0
+                    ? Math.max(
+                        ...fullMatches.map((r) => r.credit_pct ?? 0)
+                      )
+                    : null;
 
-  let bestTicker: string | null = null;
-  if (fullMatches.length > 0) {
-    const bestRow = fullMatches.reduce((best, r) =>
-      (r.credit_pct ?? 0) > (best.credit_pct ?? 0) ? r : best
-    );
-    bestTicker = bestRow.option_ticker;
-  }
+                const rowsWithScore: ClassifiedRow[] = prelim.map((row) => {
+                  let classification = row.classification;
 
-  // 3) Second pass: mark 'best' and compute score / rowClass
-  const tableRows: ClassifiedRow[] = prelim.map((row) => {
-    let finalClass: Classification = row.classification;
+                  if (
+                    classification === "opportunity" &&
+                    maxCredit !== null &&
+                    row.credit_pct != null &&
+                    row.credit_pct === maxCredit
+                  ) {
+                    classification = "best";
+                  }
 
-    if (
-      bestTicker &&
-      row.classification === "opportunity" &&
-      row.option_ticker === bestTicker
-    ) {
-      finalClass = "best";
-    }
+                  const score = scoreForClassification(classification);
+                  const rowClass = rowClassForClassification(classification);
 
-    return {
-      ...row,
-      classification: finalClass,
-      score: scoreForClassification(finalClass),
-      rowClass: rowClassForClassification(finalClass),
-    };
-  });
+                  return {
+                    ...row,
+                    classification,
+                    score,
+                    rowClass,
+                  };
+                });
 
-  const incompleteCount = data.incomplete.length;
-  const isExpanded =
-    expandedIncomplete === data.expiration_date;
+                const hasRows = rowsWithScore.length > 0;
 
+                // 3) Incomplete rows (sin delta utilizable)
+                const incompleteSorted = [...data.incomplete].sort(
+                  (a, b) => a.strike_price - b.strike_price
+                );
+                const hasIncomplete = incompleteSorted.length > 0;
+
+                const isExpanded =
+                  expandedIncomplete === data.expiration_date;
+
+                const toggleIncomplete = () => {
+                  setExpandedIncomplete(
+                    isExpanded ? null : data.expiration_date
+                  );
+                };
 
                 return (
                   <div
                     key={`${data.ticker}-${data.expiration_date}`}
                     className="expiration-block"
                   >
+                    {/* Resumen de esa expiración */}
                     <div className="summary-line">
                       <span>
                         Ticker: <b>{data.ticker}</b>
@@ -827,19 +816,22 @@ function App() {
                       </span>
                       <span>
                         Spot (approx):{" "}
-                        <b>{formatNumber(data.spot_approx, 2)}</b>
+                        <b>{formatNumber(data.spot_approx)}</b>
                       </span>
                       <span>
-                        ATM strike: <b>{data.atm_strike}</b>
+                        ATM strike:{" "}
+                        <b>{formatNumber(data.atm_strike)}</b>
                       </span>
                       <span>
-                        EM: <b>{formatNumber(data.em, 2)}</b>
+                        EM: <b>{formatNumber(data.em)}</b>
                       </span>
                       <span>
-                        Lower band: <b>{formatNumber(data.lower_band, 2)}</b>
+                        Lower band:{" "}
+                        <b>{formatNumber(data.lower_band)}</b>
                       </span>
                     </div>
 
+                    {/* Tabla principal */}
                     <div className="table-wrapper">
                       <table className="data-table">
                         <thead>
@@ -850,69 +842,62 @@ function App() {
                             <th>Credit %</th>
                             <th>Mid (Put)</th>
                             <th>Volume</th>
-                            <th>Open interest</th>
+                            <th>Open Int.</th>
                             <th>Greeks src</th>
                             <th>Dist. to band</th>
                             <th>Score</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {tableRows.length === 0 && (
+                          {hasRows ? (
+                            rowsWithScore.map((row) => (
+                              <tr
+                                key={row.option_ticker}
+                                className={row.rowClass}
+                              >
+                                <td>{row.type}</td>
+                                <td>{formatNumber(row.strike_price)}</td>
+                                <td>{formatNumber(row.delta)}</td>
+                                <td>{formatPercent(row.credit_pct)}</td>
+                                <td>{formatNumber(row.put_mid)}</td>
+                                <td>{formatInt(row.volume)}</td>
+                                <td>{formatInt(row.open_interest)}</td>
+                                <td>{row.greeks_source ?? "-"}</td>
+                                <td>
+                                  {formatNumber(
+                                    row.distance_to_lower_band
+                                  )}
+                                </td>
+                                <td style={{ textAlign: "center" }}>
+                                  {row.score}
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
                             <tr>
-                              <td colSpan={10} className="empty-cell">
-                                No opportunities for the current filters.
+                              <td
+                                className="empty-cell"
+                                colSpan={10}
+                              >
+                                No rows match for this expiration. Try
+                                adjusting your filters.
                               </td>
                             </tr>
                           )}
-
-                          {tableRows.map((row) => (
-                            <tr
-                              key={row.option_ticker}
-                              className={row.rowClass}
-                            >
-                              <td>{row.type}</td>
-                              <td>{row.strike_price}</td>
-                              <td>{formatNumber(row.delta ?? null, 3)}</td>
-                              <td>
-                                {formatPercent(row.credit_pct ?? null, 2)}
-                              </td>
-                              <td>
-                                {formatNumber(
-                                  row.put_mid ?? row.last ?? null,
-                                  2
-                                )}
-                              </td>
-                              <td>{formatInt(row.volume)}</td>
-                              <td>{formatInt(row.open_interest)}</td>
-                              <td>{row.greeks_source ?? "-"}</td>
-                              <td>
-                                {formatNumber(
-                                  row.distance_to_lower_band ?? null,
-                                  2
-                                )}
-                              </td>
-                              <td>{row.score}</td>
-                            </tr>
-                          ))}
                         </tbody>
                       </table>
                     </div>
 
-                    {incompleteCount > 0 && (
+                    {/* Sección de incompletos */}
+                    {hasIncomplete && (
                       <div className="incomplete-section">
                         <button
                           className="incomplete-toggle"
-                          onClick={() =>
-                            setExpandedIncomplete((prev) =>
-                              prev === data.expiration_date
-                                ? null
-                                : data.expiration_date
-                            )
-                          }
+                          onClick={toggleIncomplete}
                         >
-                          {isExpanded ? "▼" : "▶"} {incompleteCount} options with
-                          missing delta/IV – click to{" "}
-                          {isExpanded ? "collapse" : "expand"}
+                          {isExpanded
+                            ? "Hide rows with missing greeks"
+                            : `Show ${incompleteSorted.length} rows with missing greeks`}
                         </button>
 
                         {isExpanded && (
@@ -923,30 +908,45 @@ function App() {
                                   <th>Strike</th>
                                   <th>Mid (Put)</th>
                                   <th>Volume</th>
-                                  <th>Open interest</th>
+                                  <th>Open Int.</th>
                                   <th>Credit %</th>
+                                  <th>IV</th>
                                   <th>Reason</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {data.incomplete.map((row) => (
-                                  <tr key={row.option_ticker}>
-                                    <td>{row.strike_price}</td>
+                                {incompleteSorted.map((row) => (
+                                  <tr
+                                    key={row.option_ticker}
+                                  >
                                     <td>
                                       {formatNumber(
-                                        row.put_mid ?? row.last ?? null,
-                                        2
+                                        row.strike_price
                                       )}
                                     </td>
-                                    <td>{formatInt(row.volume)}</td>
-                                    <td>{formatInt(row.open_interest)}</td>
+                                    <td>
+                                      {formatNumber(row.put_mid)}
+                                    </td>
+                                    <td>
+                                      {formatInt(row.volume)}
+                                    </td>
+                                    <td>
+                                      {formatInt(
+                                        row.open_interest
+                                      )}
+                                    </td>
                                     <td>
                                       {formatPercent(
-                                        row.credit_pct ?? null,
-                                        2
+                                        row.credit_pct
                                       )}
                                     </td>
-                                    <td>{row.reason_missing}</td>
+                                    <td>
+                                      {formatNumber(row.iv)}
+                                    </td>
+                                    <td>
+                                      {row.reason_missing ??
+                                        "missing data"}
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -960,15 +960,34 @@ function App() {
                   </div>
                 );
               })}
+
+              {/* Resumen de perfil DESPUÉS de todas las tablas */}
+              <p className="profile-summary">
+                Profile:&nbsp;<b>{profile}</b> · Max Δ:&nbsp;
+                <b>{deltaMax.toFixed(2)}</b> · Min credit:&nbsp;
+                <b>{(creditMin * 100).toFixed(2)}%</b> · Band distance:&nbsp;
+                <b>{bandWindow}</b> · Future expirations:&nbsp;
+                <b>{numExpirations}</b>
+              </p>
             </>
           )}
 
-          {!error && records.length === 0 && (
+          {/* Caso: ya hiciste una búsqueda pero ninguna expiración tuvo filas */}
+          {!error && lastQuery && !loading && records.length === 0 && (
+            <p className="hint">
+              No expirations produced opportunities for the current filters.
+              Consider lowering the minimum credit or raising the maximum delta.
+            </p>
+          )}
+
+          {/* Caso inicial: todavía no se ha hecho búsqueda */}
+          {!error && !lastQuery && !loading && records.length === 0 && (
             <p className="hint">
               Set your filters and click <b>Load opportunities</b> to see
               results.
             </p>
           )}
+
         </section>
       </main>
     </div>

@@ -367,6 +367,16 @@ body {
   margin: 0.75rem 0 0.25rem;
 }
 
+.profile-summary {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: #9ca3af;
+}
+
+.profile-summary b {
+  color: #e5e7eb;
+}
+
 /* Responsive */
 @media (max-width: 800px) {
   .app-root {
