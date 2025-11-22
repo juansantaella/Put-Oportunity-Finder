@@ -563,7 +563,7 @@ function App() {
             </div>
 
             <div className="field">
-              <label>Points above the Lower Band</label>
+              <label>Distance from Lower Band (± points)</label>
 
               <div className="slider-row">
                 <input

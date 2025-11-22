@@ -437,7 +437,6 @@ def rolling_put_candidates(
                 "credit_pct": credit_pct,
             }
         )
-
     # 6.4 Filter enriched puts by band window, delta, and credit
     filtered: List[Dict[str, Any]] = []
     for row in enriched_puts:
@@ -460,30 +459,11 @@ def rolling_put_candidates(
         if in_band and in_delta and in_credit:
             filtered.append(row)
 
-    # 6.5 Fallback to looser criteria if nothing passes all filters
-    if not filtered:
-        for row in enriched_puts:
-            s = row["strike_price"]
-            d = abs(row["delta"])
-            cp = row["credit_pct"]
-
-            in_band = (s >= (lower_band - band_window)) and (s <= (lower_band + band_window))
-            in_delta = (d >= delta_min) and (d <= delta_max)
-            in_credit = (
-                cp is not None
-                and cp >= credit_min_pct
-                and cp <= credit_max_pct
-            )
-
-            row["meets_band"] = in_band
-            row["meets_delta"] = in_delta
-            row["meets_credit"] = in_credit
-
-            if in_band and (in_delta or in_credit):
-                filtered.append(row)
+    # 6.5 (removed) – no fallback; if `filtered` is empty we just won't have opportunities
 
     # 6.6 Mark opportunities and neighbors
-    filtered.sort(key=lambda r: r["strike_price"])
+    opportunities: List[Dict[str, Any]] = []
+    neighbors: List[Dict[str, Any]] = []
 
     if filtered:
         strikes = [r["strike_price"] for r in enriched_puts]
