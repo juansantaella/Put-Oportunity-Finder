@@ -399,7 +399,7 @@ function App() {
     setDeltaMin(DELTA_MAX_MIN);
     setCreditMax(CREDIT_MIN_MAX);
     setBandWindow(1);
-    setNumExpirations(1);
+    // setNumExpirations(1);
 
     if (p === "Conservative") {
       // Max Delta 0.25, Min Credit 0.60 %
