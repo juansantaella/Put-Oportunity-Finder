@@ -243,8 +243,8 @@ function App() {
   const [deltaMin, setDeltaMin] = useState(DELTA_MAX_MIN);
   const [deltaMax, setDeltaMax] = useState(0.3); // Normal (default) profile
 
-  // Stored as decimal (e.g. 0.007 = 0.70 %)
-  const [creditMin, setCreditMin] = useState(0.007);
+  // Stored as decimal (e.g. 0.007 = 0.60 %)
+  const [creditMin, setCreditMin] = useState(0.006);
   const [creditMax, setCreditMax] = useState(CREDIT_MIN_MAX);
 
   const [bandWindow, setBandWindow] = useState(1);
@@ -450,13 +450,13 @@ useEffect(() => {
       setDeltaMax(0.25);
       setCreditMin(0.006);
     } else if (p === "Aggressive") {
-      // Max Delta 0.35, Min Credit 0.70 %
+      // Max Delta 0.35, Min Credit 0.60 %
       setDeltaMax(0.35);
-      setCreditMin(0.007);
+      setCreditMin(0.006);
     } else {
-      // Normal (default): Max Delta 0.30, Min Credit 0.70 %
-      setDeltaMax(0.3);
-      setCreditMin(0.007);
+      // Normal (default): Max Delta 0.30, Min Credit 0.60 %
+      setDeltaMax(0.30);
+      setCreditMin(0.006);
     }
   }
 
